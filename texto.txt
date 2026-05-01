@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPYDERBOT — Diagnóstico Inteligente de Riego por Goteo</title>
+  <meta name="description" content="SPYDERBOT es un robot que recorre mangueras de riego por goteo, detecta obstrucciones y marca físicamente los puntos con bajo flujo de agua para facilitar su reparación." />
+  <meta name="keywords" content="robot riego goteo, detección obstrucciones manguera, diagnóstico agrícola, spyderbot, flujo de agua, mantenimiento riego, tecnología agrícola" />
+  <meta property="og:title" content="SPYDERBOT — Diagnóstico Inteligente de Riego por Goteo" />
+  <meta property="og:description" content="Robot autónomo que detecta y marca obstrucciones en mangueras de goteo. Menos pérdidas, más cosechas." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Syne:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== RESET & VARIABLES ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+```
+:root {
+  --black: #050508;
+  --deep: #0a0b10;
+  --card-bg: #0d0f18;
+  --white: #f0f2ff;
+  --white-dim: rgba(240,242,255,0.7);
+  --blue: #0af;
+  --blue-dark: #0077bb;
+  --blue-glow: rgba(0,170,255,0.25);
+  --green: #00ff88;
+  --green-dark: #00cc66;
+  --green-glow: rgba(0,255,136,0.2);
+  --border: rgba(0,170,255,0.12);
+  --border-green: rgba(0,255,136,0.12);
+  --nav-h: 72px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--black);
+  color: var(--white);
+  font-family: 'Syne', sans-serif;
+  font-weight: 400;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+/* ===== CUSTOM CURSOR ===== */
+.cursor {
+  width: 12px; height: 12px;
+  background: var(--blue);
+  border-radius: 50%;
+  position: fixed; top: 0; left: 0;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%,-50%);
+  transition: transform 0.05s, background 0.2s;
+  box-shadow: 0 0 14px var(--blue);
+}
+.cursor-ring {
+  width: 36px; height: 36px;
+  border: 1px solid rgba(0,170,255,0.5);
+  border-radius: 50%;
+  position: fixed; top: 0; left: 0;
+  pointer-events: none;
+  z-index: 9998;
+  transform: translate(-50%,-50%);
+  transition: transform 0.18s ease, width 0.2s, height 0.2s;
+}
+body:hover .cursor-ring { }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--black); }
+::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 4px; }
+
+/* ===== NOISE TEXTURE OVERLAY ===== */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.3;
+}
+
+/* ===== TYPOGRAPHY ===== */
+h1,h2,h3 { font-family: 'Orbitron', monospace; font-weight: 700; letter-spacing: -0.02em; }
+h1 { font-size: clamp(2.8rem, 7vw, 6.5rem); line-height: 1.0; font-weight: 900; }
+h2 { font-size: clamp(1.8rem, 4vw, 3rem); }
+h3 { font-size: clamp(1rem, 2vw, 1.4rem); font-weight: 600; }
+p { line-height: 1.75; }
+
+.label {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--blue);
+  opacity: 0.8;
+}
+.label-green { color: var(--green); }
+
+/* ===== NAV ===== */
+nav {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: var(--nav-h);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 5vw;
+  z-index: 100;
+  backdrop-filter: blur(16px);
+  background: rgba(5,5,8,0.85);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s;
+}
+.nav-logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: var(--white);
+  text-decoration: none;
+  display: flex; align-items: center; gap: 10px;
+}
+.nav-logo span { color: var(--blue); }
+.logo-icon {
+  width: 34px; height: 34px;
+  border: 1.5px solid var(--blue);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+  box-shadow: 0 0 12px var(--blue-glow);
+}
+.nav-links { display: flex; gap: 2rem; list-style: none; }
+.nav-links a {
+  color: var(--white-dim);
+  text-decoration: none;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--blue); }
+.nav-cta {
+  background: transparent;
+  border: 1px solid var(--blue);
+  color: var(--blue);
+  padding: 8px 20px;
+  border-radius: 4px;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  cursor: none;
+  transition: all 0.2s;
+}
+.nav-cta:hover { background: var(--blue); color: var(--black); box-shadow: 0 0 20px var(--blue-glow); }
+.hamburger { display: none; flex-direction: column; gap: 5px; cursor: none; background: none; border: none; }
+.hamburger span { width: 24px; height: 1.5px; background: var(--white); display: block; transition: all 0.3s; }
+
+/* ===== HERO ===== */
+#hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: calc(var(--nav-h) + 4rem) 5vw 6rem;
+  position: relative;
+  overflow: hidden;
+}
+.hero-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,170,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,170,255,0.04) 1px, transparent 1px);
+  background-size: 80px 80px;
+  animation: gridPulse 8s ease-in-out infinite;
+}
+@keyframes gridPulse { 0%,100%{opacity:0.6} 50%{opacity:1} }
+
+.hero-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+}
+.hero-orb-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(0,170,255,0.18), transparent 70%);
+  top: -100px; right: -100px;
+}
+.hero-orb-2 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(0,255,136,0.12), transparent 70%);
+  bottom: 0; left: 10%;
+}
+
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 6px 16px;
+  margin-bottom: 2rem;
+  background: rgba(0,170,255,0.05);
+  width: fit-content;
+}
+.badge-dot {
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: blink 2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+.hero-title { position: relative; z-index: 2; }
+.hero-title .accent { color: var(--blue); position: relative; }
+.hero-title .accent-green { color: var(--green); }
+
+.hero-sub {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--white-dim);
+  max-width: 560px;
+  margin: 1.8rem 0 3rem;
+  font-weight: 300;
+  line-height: 1.8;
+}
+
+.hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+.btn-primary {
+  background: var(--blue);
+  color: var(--black);
+  border: none;
+  padding: 14px 32px;
+  border-radius: 4px;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  cursor: none;
+  transition: all 0.25s;
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  box-shadow: 0 0 30px rgba(0,170,255,0.3);
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0,170,255,0.5); }
+.btn-outline {
+  background: transparent;
+  color: var(--white);
+  border: 1px solid rgba(240,242,255,0.2);
+  padding: 14px 32px;
+  border-radius: 4px;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  cursor: none;
+  transition: all 0.25s;
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-outline:hover { border-color: var(--blue); color: var(--blue); }
+
+.hero-stats {
+  display: flex; gap: 3rem;
+  margin-top: 5rem;
+  padding-top: 3rem;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.stat-item {}
+.stat-num {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 900;
+  color: var(--blue);
+  line-height: 1;
+}
+.stat-num.green { color: var(--green); }
+.stat-label { font-size: 0.78rem; color: var(--white-dim); margin-top: 4px; }
+
+/* Animated robot visualization */
+.hero-visual {
+  position: absolute;
+  right: 5vw;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(45vw, 520px);
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.robot-canvas {
+  width: 100%; height: 100%;
+  position: relative;
+}
+.rail-line {
+  position: absolute;
+  top: 30%;
+  left: 5%; right: 5%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--blue), var(--green), var(--blue), transparent);
+  box-shadow: 0 0 12px var(--blue);
+}
+.rail-support {
+  position: absolute;
+  bottom: 15%;
+  width: 3px;
+  background: linear-gradient(var(--deep), var(--blue-dark));
+}
+.rail-support-1 { left: 15%; height: 35%; }
+.rail-support-2 { right: 15%; height: 35%; }
+.rail-support-3 { left: 50%; transform: translateX(-50%); height: 30%; bottom: 20%; }
+
+.bot-body {
+  position: absolute;
+  top: calc(30% - 28px);
+  width: 56px; height: 56px;
+  background: linear-gradient(135deg, #0a1628, #0d2040);
+  border: 1.5px solid var(--blue);
+  border-radius: 8px;
+  box-shadow: 0 0 30px var(--blue-glow), inset 0 1px 0 rgba(255,255,255,0.1);
+  animation: botMove 6s ease-in-out infinite;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem;
+}
+@keyframes botMove {
+  0%   { left: 8%; }
+  50%  { left: calc(92% - 56px); }
+  100% { left: 8%; }
+}
+.bot-eye {
+  width: 10px; height: 10px;
+  background: var(--blue);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--blue);
+  animation: eyePulse 2s ease-in-out infinite;
+}
+@keyframes eyePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+.water-drop {
+  position: absolute;
+  width: 4px; height: 8px;
+  background: linear-gradient(var(--blue), rgba(0,170,255,0.3));
+  border-radius: 50% 50% 60% 60%;
+  animation: waterFall 1.5s linear infinite;
+  opacity: 0;
+}
+.water-drop:nth-child(1) { animation-delay: 0s; }
+.water-drop:nth-child(2) { animation-delay: 0.5s; }
+.water-drop:nth-child(3) { animation-delay: 1s; }
+@keyframes waterFall {
+  0% { opacity: 0; transform: translateY(0) translateX(0); }
+  20% { opacity: 0.8; }
+  100% { opacity: 0; transform: translateY(80px) translateX(var(--drift, 0px)); }
+}
+.water-drop:nth-child(1) { --drift: -8px; }
+.water-drop:nth-child(2) { --drift: 0px; }
+.water-drop:nth-child(3) { --drift: 8px; }
+
+.crops-row {
+  position: absolute;
+  bottom: 10%;
+  left: 5%; right: 5%;
+  display: flex; justify-content: space-around; align-items: flex-end;
+}
+.crop { font-size: clamp(1.2rem,3vw,1.8rem); animation: cropSway 3s ease-in-out infinite; }
+.crop:nth-child(even) { animation-delay: 0.5s; }
+.crop:nth-child(3n) { animation-delay: 1s; }
+@keyframes cropSway { 0%,100%{transform:rotate(-3deg)} 50%{transform:rotate(3deg)} }
+
+.scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+  animation: scan 4s linear infinite;
+  opacity: 0.4;
+}
+@keyframes scan { 0%{top:10%} 100%{top:90%} }
+
+/* Corner decorations */
+.corner-tl, .corner-br {
+  position: absolute;
+  width: 24px; height: 24px;
+  border-color: var(--blue);
+  border-style: solid;
+  opacity: 0.5;
+}
+.corner-tl { top: 4%; left: 4%; border-width: 2px 0 0 2px; }
+.corner-br { bottom: 4%; right: 4%; border-width: 0 2px 2px 0; }
+
+/* ===== SECTIONS SHARED ===== */
+section { position: relative; z-index: 2; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 5vw; }
+.section-pad { padding: 7rem 0; }
+
+.section-header { text-align: center; margin-bottom: 5rem; }
+.section-header .label { margin-bottom: 1rem; }
+.section-header h2 { margin-bottom: 1rem; }
+.section-header p { color: var(--white-dim); max-width: 580px; margin: 0 auto; font-size: 1.05rem; }
+
+/* ===== WHAT IS SECTION ===== */
+#what {
+  background: linear-gradient(180deg, var(--black) 0%, var(--deep) 100%);
+}
+.what-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5rem;
+  align-items: center;
+}
+.what-diagram {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2.5rem;
+  background: var(--card-bg);
+  overflow: hidden;
+}
+.what-diagram::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(0,170,255,0.05), transparent 70%);
+}
+.diagram-rail {
+  height: 4px;
+  background: linear-gradient(90deg, var(--blue-dark), var(--blue), var(--green-dark), var(--blue));
+  border-radius: 4px;
+  margin: 2.5rem 0;
+  box-shadow: 0 0 14px var(--blue-glow);
+  position: relative;
+}
+.diagram-rail::before, .diagram-rail::after {
+  content: '◆';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--blue);
+  font-size: 0.8rem;
+}
+.diagram-rail::before { left: -10px; }
+.diagram-rail::after { right: -10px; }
+.diagram-bot {
+  width: 60px; height: 60px;
+  background: linear-gradient(135deg, #0a1628, #0d2040);
+  border: 2px solid var(--blue);
+  border-radius: 10px;
+  margin: 0 auto 1.5rem;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem;
+  box-shadow: 0 0 30px var(--blue-glow);
+  animation: float 3s ease-in-out infinite;
+}
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+.diagram-arrows {
+  display: flex; justify-content: space-around;
+  font-size: 0.7rem;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 0.1em;
+}
+.d-arrow { text-align: center; color: var(--white-dim); }
+.d-arrow span { display: block; font-size: 1.2rem; margin-bottom: 4px; }
+.d-arrow .blue { color: var(--blue); }
+.d-arrow .green { color: var(--green); }
+
+.what-content .label { margin-bottom: 1rem; }
+.what-content h2 { margin-bottom: 1.5rem; }
+.what-content p { color: var(--white-dim); margin-bottom: 1.5rem; font-size: 1.05rem; }
+.what-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 2rem; }
+.tag {
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 5px 14px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--white-dim);
+  font-family: 'Orbitron', monospace;
+  transition: all 0.2s;
+}
+.tag:hover { border-color: var(--blue); color: var(--blue); }
+.tag.green-tag:hover { border-color: var(--green); color: var(--green); }
+
+/* ===== HOW IT WORKS ===== */
+#how { background: var(--black); }
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.step-card {
+  background: var(--card-bg);
+  padding: 2.5rem 2rem;
+  position: relative;
+  transition: background 0.3s;
+  overflow: hidden;
+}
+.step-card:hover { background: #111420; }
+.step-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--blue), var(--green));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s ease;
+}
+.step-card:hover::before { transform: scaleX(1); }
+.step-num {
+  font-family: 'Orbitron', monospace;
+  font-size: 3rem;
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(0,170,255,0.2);
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+.step-icon { font-size: 2.2rem; margin-bottom: 1rem; }
+.step-card h3 { color: var(--white); margin-bottom: 0.75rem; font-size: 0.95rem; }
+.step-card p { color: var(--white-dim); font-size: 0.88rem; line-height: 1.7; }
+
+/* ===== BENEFITS ===== */
+#benefits { background: var(--deep); }
+.benefits-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+}
+.benefits-list { display: flex; flex-direction: column; gap: 1.5rem; }
+.benefit-item {
+  display: flex; gap: 1.2rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  transition: all 0.3s;
+  cursor: none;
+}
+.benefit-item:hover {
+  border-color: var(--blue);
+  transform: translateX(6px);
+  box-shadow: -4px 0 0 var(--blue), 0 0 30px rgba(0,170,255,0.08);
+}
+.benefit-icon {
+  width: 44px; height: 44px;
+  flex-shrink: 0;
+  background: rgba(0,170,255,0.1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+}
+.benefit-item.green-b .benefit-icon { background: rgba(0,255,136,0.08); border-color: var(--border-green); }
+.benefit-item.green-b:hover { border-color: var(--green); box-shadow: -4px 0 0 var(--green), 0 0 30px rgba(0,255,136,0.08); }
+.benefit-text h3 { font-size: 0.95rem; margin-bottom: 0.4rem; }
+.benefit-text p { font-size: 0.85rem; color: var(--white-dim); line-height: 1.6; }
+
+.benefits-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.metric-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
+  background: var(--card-bg);
+  text-align: center;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.metric-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+}
+.metric-card.green-m::after { background: linear-gradient(90deg, transparent, var(--green), transparent); }
+.metric-card:hover { transform: translateY(-4px); border-color: rgba(0,170,255,0.3); }
+.metric-card.green-m:hover { border-color: rgba(0,255,136,0.3); }
+.metric-num {
+  font-family: 'Orbitron', monospace;
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: var(--blue);
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+.metric-num.green { color: var(--green); }
+.metric-label { font-size: 0.8rem; color: var(--white-dim); }
+
+/* ===== GALLERY ===== */
+#gallery { background: var(--black); }
+.gallery-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 1rem;
+}
+.gallery-item {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  position: relative;
+  background: var(--card-bg);
+  aspect-ratio: 16/9;
+  display: flex; align-items: center; justify-content: center;
+  cursor: none;
+  transition: all 0.3s;
+}
+.gallery-item.tall { grid-row: span 2; aspect-ratio: unset; }
+.gallery-item:hover { border-color: var(--blue); transform: scale(1.02); box-shadow: 0 0 40px var(--blue-glow); }
+.gallery-item .placeholder {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+}
+.g-icon { font-size: 3rem; }
+.g-title { font-family: 'Orbitron', monospace; font-size: 0.75rem; letter-spacing: 0.15em; color: var(--blue); }
+.g-desc { font-size: 0.8rem; color: var(--white-dim); }
+.gallery-item .overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(0,170,255,0.03), rgba(0,255,136,0.03));
+}
+.gallery-bg-1 { background: linear-gradient(135deg, #050d1a, #0a1628, #050d1a); }
+.gallery-bg-2 { background: linear-gradient(135deg, #050d12, #081a10, #050d12); }
+.gallery-bg-3 { background: linear-gradient(135deg, #0d0a18, #150d20, #0d0a18); }
+.gallery-bg-4 { background: linear-gradient(135deg, #0a0d1a, #0d1228, #0a0d1a); }
+.gallery-bg-5 { background: linear-gradient(135deg, #080d10, #0a1415, #080d10); }
+
+/* Animated gallery elements */
+.mini-bot { font-size: 2.5rem; animation: float 3s ease-in-out infinite; }
+.mini-rail {
+  width: 80%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--blue), var(--green), var(--blue), transparent);
+  border-radius: 3px;
+  box-shadow: 0 0 10px var(--blue-glow);
+}
+
+/* ===== APPLICATIONS ===== */
+#applications { background: var(--deep); }
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+.app-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2.5rem 2rem;
+  background: var(--card-bg);
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.app-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at top right, rgba(0,170,255,0.04), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.app-card:hover::before { opacity: 1; }
+.app-card:hover { border-color: rgba(0,170,255,0.3); transform: translateY(-6px); }
+.app-card.green-card:hover { border-color: rgba(0,255,136,0.3); }
+.app-card.green-card::before { background: radial-gradient(circle at top right, rgba(0,255,136,0.04), transparent 60%); }
+.app-emoji { font-size: 2.5rem; margin-bottom: 1.2rem; }
+.app-card h3 { margin-bottom: 0.75rem; font-size: 1rem; }
+.app-card p { font-size: 0.88rem; color: var(--white-dim); line-height: 1.7; }
+.app-tag {
+  display: inline-block;
+  margin-top: 1rem;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: var(--blue);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 3px 10px;
+}
+.green-card .app-tag { color: var(--green); }
+
+/* ===== TEAM ===== */
+#team { background: var(--black); }
+.team-wrap { display: grid; grid-template-columns: 1fr 1.4fr; gap: 4rem; align-items: start; }
+.team-info .label { margin-bottom: 1rem; }
+.team-info h2 { margin-bottom: 1.5rem; }
+.team-info p { color: var(--white-dim); font-size: 1.05rem; line-height: 1.8; margin-bottom: 1.5rem; }
+.team-values { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 2rem; }
+.team-val {
+  display: flex; align-items: center; gap: 0.75rem;
+  font-size: 0.88rem; color: var(--white-dim);
+}
+.val-dot { width: 6px; height: 6px; background: var(--blue); border-radius: 50%; flex-shrink: 0; }
+.val-dot.green { background: var(--green); }
+
+.team-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.team-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.8rem 1.5rem;
+  background: var(--card-bg);
+  transition: all 0.3s;
+}
+.team-card:hover { border-color: rgba(0,170,255,0.3); transform: translateY(-4px); }
+.team-avatar {
+  width: 52px; height: 52px;
+  background: linear-gradient(135deg, rgba(0,170,255,0.2), rgba(0,255,136,0.1));
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+.team-card h3 { font-size: 0.9rem; margin-bottom: 0.25rem; }
+.team-card .role { font-size: 0.75rem; color: var(--blue); font-family: 'Orbitron', monospace; letter-spacing: 0.08em; margin-bottom: 0.75rem; }
+.team-card p { font-size: 0.82rem; color: var(--white-dim); line-height: 1.6; }
+
+/* ===== CONTACT ===== */
+#contact { background: var(--deep); }
+.contact-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 4rem; align-items: start; }
+.contact-info .label { margin-bottom: 1rem; }
+.contact-info h2 { margin-bottom: 1.5rem; }
+.contact-info p { color: var(--white-dim); font-size: 1.05rem; line-height: 1.8; margin-bottom: 2rem; }
+.contact-items { display: flex; flex-direction: column; gap: 1rem; }
+.contact-item {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  transition: all 0.2s;
+}
+.contact-item:hover { border-color: var(--blue); }
+.ci-icon {
+  width: 38px; height: 38px;
+  background: rgba(0,170,255,0.1);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.ci-text { font-size: 0.85rem; }
+.ci-label { font-family: 'Orbitron', monospace; font-size: 0.65rem; letter-spacing: 0.12em; color: var(--blue); margin-bottom: 2px; }
+.ci-val { color: var(--white); }
+
+/* Form */
+.contact-form { display: flex; flex-direction: column; gap: 1rem; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-group label {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.15em;
+  color: var(--blue);
+}
+.form-group input, .form-group select, .form-group textarea {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  color: var(--white);
+  font-family: 'Syne', sans-serif;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: none;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(0,170,255,0.08);
+}
+.form-group select option { background: #0a0b10; }
+.form-group textarea { resize: vertical; min-height: 110px; }
+.btn-submit {
+  background: linear-gradient(90deg, var(--blue), var(--blue-dark));
+  color: var(--black);
+  border: none;
+  padding: 15px 32px;
+  border-radius: 6px;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  cursor: none;
+  transition: all 0.25s;
+  width: 100%;
+  box-shadow: 0 4px 20px rgba(0,170,255,0.25);
+}
+.btn-submit:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,170,255,0.4); }
+.form-note { font-size: 0.75rem; color: var(--white-dim); text-align: center; }
+
+/* ===== CTA FINAL ===== */
+#cta {
+  background: var(--black);
+  padding: 8rem 0;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cta-orb {
+  position: absolute;
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(0,170,255,0.08), transparent 70%);
+  border-radius: 50%;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  pointer-events: none;
+}
+.cta-content { position: relative; z-index: 2; }
+.cta-content .label { margin-bottom: 1.5rem; }
+.cta-content h2 { font-size: clamp(2rem, 4vw, 3.5rem); margin-bottom: 1.5rem; }
+.cta-content h2 span { color: var(--blue); }
+.cta-content p { color: var(--white-dim); max-width: 500px; margin: 0 auto 3rem; font-size: 1.05rem; }
+.cta-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.btn-green {
+  background: var(--green);
+  color: var(--black);
+  border: none;
+  padding: 14px 32px;
+  border-radius: 4px;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  cursor: none;
+  transition: all 0.25s;
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  box-shadow: 0 0 30px rgba(0,255,136,0.3);
+}
+.btn-green:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0,255,136,0.5); }
+
+/* Divider line */
+.divider {
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  margin: 0 auto 2rem;
+}
+.divider.green { background: linear-gradient(90deg, transparent, var(--green), transparent); }
+
+/* ===== FOOTER ===== */
+footer {
+  background: var(--deep);
+  border-top: 1px solid var(--border);
+  padding: 3rem 5vw;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: gap;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.footer-logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--white);
+}
+.footer-logo span { color: var(--blue); }
+.footer-text { font-size: 0.8rem; color: var(--white-dim); }
+.footer-links { display: flex; gap: 1.5rem; }
+.footer-links a { font-size: 0.78rem; color: var(--white-dim); text-decoration: none; transition: color 0.2s; }
+.footer-links a:hover { color: var(--blue); }
+
+/* ===== WHATSAPP FLOAT ===== */
+.whatsapp-btn {
+  position: fixed;
+  bottom: 2rem; right: 2rem;
+  width: 58px; height: 58px;
+  background: #25D366;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem;
+  z-index: 500;
+  box-shadow: 0 4px 20px rgba(37,211,102,0.4);
+  text-decoration: none;
+  transition: all 0.3s;
+  animation: waPulse 3s ease-in-out infinite;
+  cursor: none;
+}
+.whatsapp-btn:hover { transform: scale(1.1); box-shadow: 0 6px 30px rgba(37,211,102,0.6); }
+@keyframes waPulse {
+  0%,100% { box-shadow: 0 4px 20px rgba(37,211,102,0.4), 0 0 0 0 rgba(37,211,102,0.3); }
+  50% { box-shadow: 0 4px 20px rgba(37,211,102,0.4), 0 0 0 14px rgba(37,211,102,0); }
+}
+
+/* ===== ANIMATIONS ===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+
+/* Form success */
+.form-success {
+  display: none;
+  text-align: center;
+  padding: 3rem;
+  border: 1px solid var(--green);
+  border-radius: 12px;
+  background: rgba(0,255,136,0.05);
+}
+.form-success.active { display: block; }
+.form-success .check { font-size: 3rem; margin-bottom: 1rem; }
+.form-success h3 { color: var(--green); margin-bottom: 0.5rem; }
+.form-success p { color: var(--white-dim); font-size: 0.9rem; }
+
+/* Typing animation for hero */
+.typed-cursor {
+  display: inline-block;
+  width: 3px;
+  background: var(--blue);
+  margin-left: 4px;
+  animation: blink 1s infinite;
+  vertical-align: middle;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+  .steps-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero-visual { display: none; }
+  .what-grid { grid-template-columns: 1fr; }
+  .gallery-grid { grid-template-columns: 1fr 1fr; }
+  .gallery-item.tall { grid-row: unset; }
+}
+@media (max-width: 768px) {
+  .nav-links, .nav-cta { display: none; }
+  .hamburger { display: flex; }
+  h1 { font-size: clamp(2.2rem, 8vw, 3.5rem); }
+  .hero-stats { gap: 2rem; }
+  .what-grid, .benefits-wrap, .contact-grid, .team-wrap { grid-template-columns: 1fr; gap: 2rem; }
+  .apps-grid { grid-template-columns: 1fr; }
+  .team-cards { grid-template-columns: 1fr; }
+  .gallery-grid { grid-template-columns: 1fr; }
+  .steps-grid { grid-template-columns: 1fr; }
+  .form-row { grid-template-columns: 1fr; }
+  footer { flex-direction: column; text-align: center; }
+  .benefits-metrics { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .hero-actions { flex-direction: column; }
+  .cta-actions { flex-direction: column; align-items: center; }
+  .benefits-metrics { grid-template-columns: 1fr; }
+}
+
+/* Mobile nav */
+.mobile-nav {
+  display: none;
+  position: fixed; top: var(--nav-h); left: 0; right: 0;
+  background: rgba(5,5,8,0.97);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 2rem 5vw;
+  z-index: 99;
+  flex-direction: column; gap: 1.5rem;
+}
+.mobile-nav.open { display: flex; }
+.mobile-nav a { color: var(--white-dim); text-decoration: none; font-family: 'Orbitron', monospace; font-size: 0.85rem; letter-spacing: 0.1em; }
+.mobile-nav a:hover { color: var(--blue); }
+```
+
+  </style>
+</head>
+<body>
+
+<!-- Custom Cursor -->
+
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- WhatsApp Float -->
+
+<a href="https://wa.me/56945661713?text=Hola,%20estoy%20interesado%20en%20SPYDERBOT"
+class="whatsapp-btn" target="_blank" aria-label="Contactar por WhatsApp">
+💬
+</a>
+
+<!-- NAV -->
+
+<nav id="navbar">
+  <a href="#hero" class="nav-logo">
+    <div class="logo-icon">🕷️</div>
+    SPYDER<span>BOT</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#what">Sistema</a></li>
+    <li><a href="#how">Funcionamiento</a></li>
+    <li><a href="#benefits">Beneficios</a></li>
+    <li><a href="#applications">Aplicaciones</a></li>
+    <li><a href="#team">Proyecto</a></li>
+  </ul>
+  <a href="#contact" class="nav-cta">Contactar</a>
+  <button class="hamburger" id="hamburger" aria-label="Menú">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+<nav class="mobile-nav" id="mobileNav">
+  <a href="#what" onclick="closeMobile()">Sistema</a>
+  <a href="#how" onclick="closeMobile()">Funcionamiento</a>
+  <a href="#benefits" onclick="closeMobile()">Beneficios</a>
+  <a href="#applications" onclick="closeMobile()">Aplicaciones</a>
+  <a href="#team" onclick="closeMobile()">Proyecto</a>
+  <a href="#contact" onclick="closeMobile()">Contactar</a>
+</nav>
+
+<!-- ===== HERO ===== -->
+
+<section id="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-orb hero-orb-1"></div>
+  <div class="hero-orb hero-orb-2"></div>
+
+  <div class="container">
+    <div class="hero-badge">
+      <div class="badge-dot"></div>
+      <span class="label">Diagnóstico de Riego · Robótica de Campo</span>
+    </div>
+
+```
+<h1 class="hero-title">
+  Tecnología<br>
+  que <span class="accent" id="typedText">Detecta</span><br>
+  el <span class="accent-green">Problema.</span>
+</h1>
+
+<p class="hero-sub">
+  SPYDERBOT recorre las mangueras de riego por goteo, mide el flujo de agua en cada punto y marca físicamente las zonas obstruidas. Diagnóstico preciso, reparación directa, sin adivinar.
+</p>
+
+<div class="hero-actions">
+  <a href="#how" class="btn-primary">
+    ⚡ Ver cómo funciona
+  </a>
+  <a href="#contact" class="btn-outline">
+    → Conectar con el equipo
+  </a>
+</div>
+
+  <div class="hero-stats">
+    <div class="stat-item">
+      <div class="stat-num">100<span style="font-size:1.5rem">%</span></div>
+      <div class="stat-label">Cobertura de manguera</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num green">0</div>
+      <div class="stat-label">Zonas sin detectar</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">3<span style="font-size:1.5rem">x</span></div>
+      <div class="stat-label">Más rápido que revisión manual</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num green">✓</div>
+      <div class="stat-label">Marcación física automática</div>
+    </div>
+  </div>
+```
+
+  </div>
+
+  <!-- Robot Visual -->
+
+  <div class="hero-visual">
+    <div class="robot-canvas">
+      <div class="corner-tl"></div>
+      <div class="corner-br"></div>
+      <div class="scan-line"></div>
+      <div class="rail-line"></div>
+      <div class="rail-support rail-support-1"></div>
+      <div class="rail-support rail-support-2"></div>
+      <div class="rail-support rail-support-3"></div>
+      <div class="bot-body" id="botBody">
+        <div class="bot-eye"></div>
+        <!-- Water drops -->
+        <div style="position:absolute;top:100%;left:30%;display:flex;flex-direction:column;gap:4px;">
+          <div class="water-drop"></div>
+          <div class="water-drop"></div>
+          <div class="water-drop"></div>
+        </div>
+      </div>
+      <div class="crops-row">
+        <div class="crop">🌿</div>
+        <div class="crop">🌱</div>
+        <div class="crop">🪴</div>
+        <div class="crop">🌿</div>
+        <div class="crop">🌱</div>
+        <div class="crop">🪴</div>
+        <div class="crop">🌿</div>
+        <div class="crop">🌱</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== QUÉ ES ===== -->
+
+<section id="what" class="section-pad">
+  <div class="container">
+    <div class="what-grid">
+      <!-- Diagram -->
+      <div class="what-diagram reveal">
+        <div class="diagram-bot">🤖</div>
+        <p style="text-align:center;font-family:'Orbitron',monospace;font-size:0.65rem;letter-spacing:0.2em;color:var(--blue);margin-bottom:1rem;">MÓDULO DE DIAGNÓSTICO DE FLUJO</p>
+        <div class="diagram-rail"></div>
+        <div class="diagram-arrows">
+          <div class="d-arrow"><span class="blue">📏</span>Sensor de Flujo</div>
+          <div class="d-arrow"><span class="blue">⚙️</span>Motores DC</div>
+          <div class="d-arrow"><span class="green">🔴</span>Marca Física</div>
+          <div class="d-arrow"><span class="blue">📊</span>Registro de Datos</div>
+        </div>
+        <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border);">
+          <p style="font-size:0.78rem;color:var(--white-dim);text-align:center;font-family:'Orbitron',monospace;letter-spacing:0.1em;">
+            RECORRE MANGUERA · DETECTA OBSTRUCCIÓN · MARCA EL PUNTO
+          </p>
+        </div>
+      </div>
+
+```
+  <!-- Content -->
+  <div class="what-content reveal reveal-delay-2">
+    <div class="label">// Sistema SPYDERBOT</div>
+    <h2>Un robot que recorre,<br>mide y <span style="color:var(--green)">marca el problema.</span></h2>
+    <p>
+      SPYDERBOT es un robot autónomo que se desplaza directamente sobre las mangueras de riego por goteo. A medida que avanza, mide el caudal de agua en múltiples puntos para detectar zonas donde el flujo es insuficiente o nulo.
+    </p>
+    <p>
+      Cuando el sistema identifica un punto con obstrucción — ya sea por un orificio tapado, doblez o sedimento acumulado — activa un marcador físico que deja una señal visible sobre la manguera. Así el agricultor sabe exactamente dónde intervenir, sin recorrer kilómetros a ojo.
+    </p>
+    <div class="what-tags">
+      <span class="tag">Detección de Flujo</span>
+      <span class="tag">Marcación Física</span>
+      <span class="tag green-tag">Riego por Goteo</span>
+      <span class="tag">Diagnóstico Autónomo</span>
+      <span class="tag green-tag">Sin Intervención Manual</span>
+      <span class="tag">Escalable</span>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ===== CÓMO FUNCIONA ===== -->
+
+<section id="how" class="section-pad" style="background:var(--black)">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="label">// Proceso operativo</div>
+      <h2>¿Cómo funciona SPYDERBOT?</h2>
+      <p>Cuatro fases de operación autónoma que transforman la inspección manual de mangueras en un proceso inteligente, preciso y sin esfuerzo.</p>
+    </div>
+
+```
+<div class="steps-grid reveal">
+  <div class="step-card">
+    <div class="step-num">01</div>
+    <div class="step-icon">🪱</div>
+    <h3>Desplazamiento sobre la Manguera</h3>
+    <p>SPYDERBOT se posiciona al inicio de la manguera de goteo y avanza sobre ella de forma autónoma, siguiendo su trayectoria a lo largo del cultivo sin intervención humana.</p>
+  </div>
+  <div class="step-card">
+    <div class="step-num">02</div>
+    <div class="step-icon">📏</div>
+    <h3>Medición Continua de Flujo</h3>
+    <p>A medida que recorre la manguera, el robot mide en tiempo real la cantidad de agua que fluye por cada punto. Compara los valores con el umbral normal para identificar zonas deficientes.</p>
+  </div>
+  <div class="step-card">
+    <div class="step-num">03</div>
+    <div class="step-icon">🔴</div>
+    <h3>Marcación Física del Punto Obstruido</h3>
+    <p>Al detectar un sector con bajo caudal — causado por orificios tapados, dobleces o sedimento — SPYDERBOT activa un plumón y marca físicamente ese punto sobre la manguera.</p>
+  </div>
+  <div class="step-card">
+    <div class="step-num">04</div>
+    <div class="step-icon">📋</div>
+    <h3>Reporte y Reparación Directa</h3>
+    <p>El agricultor recibe un mapa de los puntos marcados y puede ir directo a reparar solo las zonas con problema. Sin adivinar, sin recorrer todo el campo a ojo.</p>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ===== BENEFICIOS ===== -->
+
+<section id="benefits" class="section-pad">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="label">// Ventajas competitivas</div>
+      <h2>El problema invisible<br><span style="color:var(--green)">ahora tiene solución.</span></h2>
+      <p>Las obstrucciones en mangueras de goteo son silenciosas y costosas. SPYDERBOT las encuentra, las señala y te permite actuar de inmediato.</p>
+    </div>
+
+```
+<div class="benefits-wrap">
+  <div class="benefits-list">
+    <div class="benefit-item reveal">
+      <div class="benefit-icon">🔍</div>
+      <div class="benefit-text">
+        <h3>Detección Precisa de Obstrucciones</h3>
+        <p>SPYDERBOT identifica con exactitud cada punto donde el flujo de agua está por debajo del umbral esperado, sin importar la longitud de la manguera ni la cantidad de ramales.</p>
+      </div>
+    </div>
+    <div class="benefit-item green-b reveal reveal-delay-1">
+      <div class="benefit-icon">🖊️</div>
+      <div class="benefit-text">
+        <h3>Marcación Física Inmediata</h3>
+        <p>Al detectar una falla, el robot marca físicamente el punto exacto con un plumón. El agricultor va directo al problema, sin perder tiempo inspeccionando toda la línea.</p>
+      </div>
+    </div>
+    <div class="benefit-item reveal reveal-delay-2">
+      <div class="benefit-icon">⏱️</div>
+      <div class="benefit-text">
+        <h3>Ahorro de Tiempo y Mano de Obra</h3>
+        <p>Elimina la necesidad de recorrer manualmente cientos de metros de manguera. SPYDERBOT hace en minutos lo que un trabajador tardaría horas en revisar.</p>
+      </div>
+    </div>
+    <div class="benefit-item green-b reveal reveal-delay-3">
+      <div class="benefit-icon">💧</div>
+      <div class="benefit-text">
+        <h3>Protección del Cultivo y el Agua</h3>
+        <p>Una obstrucción no detectada puede secar una zona entera del cultivo. Al encontrar el problema a tiempo, se protege la planta y se evita el desperdicio hídrico en otras zonas.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="benefits-metrics reveal reveal-delay-2">
+    <div class="metric-card">
+      <div class="metric-num">3x</div>
+      <div class="metric-label">Más rápido que inspección manual</div>
+    </div>
+    <div class="metric-card green-m">
+      <div class="metric-num green">100%</div>
+      <div class="metric-label">Cobertura de la manguera inspeccionada</div>
+    </div>
+    <div class="metric-card green-m">
+      <div class="metric-num green">0</div>
+      <div class="metric-label">Puntos obstruidos sin detectar</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-num">✓</div>
+      <div class="metric-label">Marcación física directa sobre la manguera</div>
+    </div>
+    <div class="metric-card" style="grid-column:span 2;">
+      <div class="metric-num">∞</div>
+      <div class="metric-label">Adaptable a cualquier largo de manguera o cultivo</div>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ===== GALLERY ===== -->
+
+<section id="gallery" class="section-pad">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="label">// Visualización del sistema</div>
+      <h2>SPYDERBOT en campo</h2>
+      <p>Renders conceptuales y visualizaciones del robot en operación sobre mangueras de riego por goteo.</p>
+    </div>
+    <div class="divider"></div>
+
+```
+<div class="gallery-grid reveal">
+  <div class="gallery-item tall gallery-bg-1">
+    <div class="placeholder">
+      <div class="mini-bot">🤖</div>
+      <div class="mini-rail"></div>
+      <div class="g-title">Vista Principal</div>
+      <div class="g-desc">SPYDERBOT recorriendo la manguera de goteo</div>
+    </div>
+    <div class="overlay"></div>
+  </div>
+  <div class="gallery-item gallery-bg-2">
+    <div class="placeholder">
+      <div class="g-icon">📏</div>
+      <div class="g-title">Sensor de Flujo</div>
+      <div class="g-desc">Medición en tiempo real del caudal por punto</div>
+    </div>
+  </div>
+  <div class="gallery-item gallery-bg-3">
+    <div class="placeholder">
+      <div class="g-icon">🔴</div>
+      <div class="g-title">Marcación de Obstrucción</div>
+      <div class="g-desc">Plumón activado al detectar bajo flujo</div>
+    </div>
+  </div>
+  <div class="gallery-item gallery-bg-4">
+    <div class="placeholder">
+      <div class="g-icon">📋</div>
+      <div class="g-title">Mapa de Diagnóstico</div>
+      <div class="g-desc">Reporte con ubicación exacta de cada falla</div>
+    </div>
+  </div>
+  <div class="gallery-item gallery-bg-5">
+    <div class="placeholder">
+      <div class="g-icon">🌿</div>
+      <div class="g-title">Cultivo Recuperado</div>
+      <div class="g-desc">Resultado tras reparación guiada por SPYDERBOT</div>
+    </div>
+  </div>
+</div>
+
+<p style="text-align:center;margin-top:2rem;font-size:0.8rem;color:var(--white-dim);font-family:'Orbitron',monospace;letter-spacing:0.1em;">
+  RENDERS Y PROTOTIPOS — PROYECTO EN DESARROLLO
+</p>
+```
+
+  </div>
+</section>
+
+<!-- ===== APLICACIONES ===== -->
+
+<section id="applications" class="section-pad">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="label">// Casos de uso</div>
+      <h2>Aplicaciones reales</h2>
+      <p>SPYDERBOT es compatible con cualquier cultivo que utilice riego por goteo. Desde pequeñas parcelas hasta grandes explotaciones agrícolas.</p>
+    </div>
+
+```
+<div class="apps-grid">
+  <div class="app-card reveal">
+    <div class="app-emoji">🍅</div>
+    <h3>Hortalizas y Verduras</h3>
+    <p>En cultivos de tomate, pimiento, lechuga o zanahoria, una manguera obstruida puede secar hileras enteras. SPYDERBOT detecta el problema antes de que el daño sea visible.</p>
+    <span class="app-tag">HORTICULTURA</span>
+  </div>
+  <div class="app-card green-card reveal reveal-delay-1">
+    <div class="app-emoji">🍇</div>
+    <h3>Viñedos y Frutales</h3>
+    <p>En cultivos de alto valor como uva, arándano o frambuesa, una falla de riego no detectada puede significar pérdidas enormes. SPYDERBOT actúa como seguro preventivo.</p>
+    <span class="app-tag">FRUTICULTURA</span>
+  </div>
+  <div class="app-card reveal reveal-delay-2">
+    <div class="app-emoji">🌻</div>
+    <h3>Invernaderos Comerciales</h3>
+    <p>En ambientes controlados con múltiples hileras de goteo, SPYDERBOT recorre cada línea sistemáticamente y garantiza que todas las plantas reciban el agua que necesitan.</p>
+    <span class="app-tag">INVERNADERO</span>
+  </div>
+  <div class="app-card green-card reveal reveal-delay-1">
+    <div class="app-emoji">🏫</div>
+    <h3>Instituciones Educativas</h3>
+    <p>Plataforma de aprendizaje para escuelas técnicas, liceos agrícolas y universidades. Ideal para proyectos STEM, ferias científicas y laboratorios de innovación tecnológica.</p>
+    <span class="app-tag">EDUCACIÓN STEM</span>
+  </div>
+  <div class="app-card reveal reveal-delay-2">
+    <div class="app-emoji">🌾</div>
+    <h3>Cultivos en Campo Abierto</h3>
+    <p>Grandes extensiones con kilómetros de manguera son imposibles de revisar manualmente con eficiencia. SPYDERBOT recorre cada metro y no deja ningún punto sin inspeccionar.</p>
+    <span class="app-tag">AGRICULTURA EXTENSIVA</span>
+  </div>
+  <div class="app-card green-card reveal reveal-delay-3">
+    <div class="app-emoji">🔬</div>
+    <h3>Investigación Agronómica</h3>
+    <p>Generación de datos precisos sobre el comportamiento del flujo en distintas condiciones de terreno, temperatura y antigüedad de la manguera. Información valiosa para investigadores.</p>
+    <span class="app-tag">R&amp;D AGRÍCOLA</span>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ===== EQUIPO / PROYECTO ===== -->
+
+<section id="team" class="section-pad">
+  <div class="container">
+    <div class="team-wrap">
+      <div class="team-info reveal">
+        <div class="label">// Sobre el proyecto</div>
+        <h2>Una idea que nace<br>del <span style="color:var(--blue)">campo real.</span></h2>
+        <p>
+          SPYDERBOT surgió de una necesidad concreta: los agricultores pierden horas revisando kilómetros de manguera a ojo para encontrar un pequeño orificio tapado. El problema es invisible, el daño es silencioso y la solución llegaba demasiado tarde.
+        </p>
+        <p>
+          El proyecto combina robótica, electrónica de sensores y marcación física en una solución simple, práctica y replicable. No requiere infraestructura compleja — solo se coloca sobre la manguera y trabaja solo.
+        </p>
+        <div class="team-values">
+          <div class="team-val"><div class="val-dot"></div>Solución a un problema real y frecuente</div>
+          <div class="team-val"><div class="val-dot green"></div>Tecnología accesible para el agricultor</div>
+          <div class="team-val"><div class="val-dot"></div>Diagnóstico físico, no solo digital</div>
+          <div class="team-val"><div class="val-dot green"></div>Reduce pérdidas de cultivo y agua</div>
+          <div class="team-val"><div class="val-dot"></div>Diseñado para el campo, no el laboratorio</div>
+        </div>
+      </div>
+
+```
+  <div class="team-cards reveal reveal-delay-2">
+    <div class="team-card">
+      <div class="team-avatar">⚙️</div>
+      <h3>Mecánica de Desplazamiento</h3>
+      <div class="role">Hardware &amp; Locomoción</div>
+      <p>Diseño del chasis y sistema de tracción que permite al robot avanzar de forma estable sobre distintos tipos de manguera sin dañarla.</p>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar">📏</div>
+      <h3>Sensores de Flujo</h3>
+      <div class="role">Medición &amp; Detección</div>
+      <p>Integración de caudalímetros y sensores de presión que miden con precisión el flujo de agua en cada punto de la manguera.</p>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar">🖊️</div>
+      <h3>Sistema de Marcación</h3>
+      <div class="role">Actuador Físico</div>
+      <p>Mecanismo que activa un plumón sobre la manguera cuando se detecta una zona con caudal insuficiente, dejando una señal visible y duradera.</p>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar">💻</div>
+      <h3>Control &amp; Lógica</h3>
+      <div class="role">Firmware &amp; Algoritmos</div>
+      <p>Programación del sistema de toma de decisiones que compara el flujo medido con los umbrales configurados y activa la marcación cuando corresponde.</p>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ===== CONTACTO ===== -->
+
+<section id="contact" class="section-pad">
+  <div class="container">
+    <div class="contact-grid">
+      <div class="contact-info reveal">
+        <div class="label">// Conecta con nosotros</div>
+        <h2>¿Listo para<br><span style="color:var(--blue)">automatizar</span><br>tu campo?</h2>
+        <p>
+          Ya seas un agricultor, inversionista, institución educativa o empresa del sector, queremos escucharte. Cuéntanos tu proyecto y exploremos cómo SPYDERBOT puede transformar tu operación.
+        </p>
+        <div class="contact-items">
+          <div class="contact-item">
+            <div class="ci-icon">📧</div>
+            <div class="ci-text">
+              <div class="ci-label">Email</div>
+              <div class="ci-val">contacto@spyderbot.tech</div>
+            </div>
+          </div>
+          <div class="contact-item">
+            <div class="ci-icon">💬</div>
+            <div class="ci-text">
+              <div class="ci-label">WhatsApp</div>
+              <div class="ci-val">+56 9 4566 1713</div>
+            </div>
+          </div>
+          <div class="contact-item">
+            <div class="ci-icon">🌐</div>
+            <div class="ci-text">
+              <div class="ci-label">Ubicación</div>
+              <div class="ci-val">Latinoamérica · Operación Global</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+```
+  <div class="reveal reveal-delay-2">
+    <div class="contact-form" id="contactForm">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="fname">Nombre</label>
+          <input type="text" id="fname" placeholder="Tu nombre" />
+        </div>
+        <div class="form-group">
+          <label for="lname">Apellido</label>
+          <input type="text" id="lname" placeholder="Tu apellido" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="email">Correo electrónico</label>
+        <input type="email" id="email" placeholder="tucorreo@empresa.com" />
+      </div>
+      <div class="form-group">
+        <label for="type">Tipo de consulta</label>
+        <select id="type">
+          <option value="">Selecciona una opción...</option>
+          <option>Empresa agrícola — Implementación</option>
+          <option>Inversión o asociación</option>
+          <option>Institución educativa</option>
+          <option>Prensa / Medios</option>
+          <option>Investigación</option>
+          <option>Otro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="msg">Mensaje</label>
+        <textarea id="msg" placeholder="Cuéntanos sobre tu proyecto, terreno, cultivos o necesidades específicas..."></textarea>
+      </div>
+      <button class="btn-submit" onclick="submitForm()">
+        ⚡ Enviar mensaje
+      </button>
+      <p class="form-note">Respondemos en menos de 24 horas · Sin compromisos</p>
+    </div>
+    <div class="form-success" id="formSuccess">
+      <div class="check">✅</div>
+      <h3>¡Mensaje recibido!</h3>
+      <p>Te contactaremos en menos de 24 horas. ¡Gracias por tu interés en SPYDERBOT!</p>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+</section>
+
+<!-- ===== CTA FINAL ===== -->
+
+<section id="cta">
+  <div class="cta-orb"></div>
+  <div class="container">
+    <div class="cta-content reveal">
+      <div class="label label-green">// El futuro es ahora</div>
+      <div class="divider green" style="margin-top:1.5rem;"></div>
+      <h2>Automatiza el riego.<br>Transforma tu <span>operación.</span></h2>
+      <p>SPYDERBOT está listo para llevar precisión, eficiencia e innovación a tu campo. Da el primer paso hacia la agricultura del futuro.</p>
+      <div class="cta-actions">
+        <a href="#contact" class="btn-primary">⚡ Solicitar demostración</a>
+        <a href="https://wa.me/56945661713?text=Hola,%20quiero%20saber%20más%20sobre%20SPYDERBOT"
+           target="_blank" class="btn-green">💬 WhatsApp directo</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+
+<footer>
+  <div class="footer-logo">SPYDER<span>BOT</span></div>
+  <div class="footer-text">© 2025 SPYDERBOT · Tecnología que cultiva el futuro · Todos los derechos reservados</div>
+  <div class="footer-links">
+    <a href="#what">Sistema</a>
+    <a href="#how">Funcionamiento</a>
+    <a href="#benefits">Beneficios</a>
+    <a href="#contact">Contacto</a>
+  </div>
+</footer>
+
+<script>
+  /* ===== CURSOR ===== */
+  const cursor = document.getElementById('cursor');
+  const ring = document.getElementById('cursorRing');
+  let mx = 0, my = 0, rx = 0, ry = 0;
+  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+  (function animateCursor() {
+    cursor.style.left = mx + 'px'; cursor.style.top = my + 'px';
+    rx += (mx - rx) * 0.12; ry += (my - ry) * 0.12;
+    ring.style.left = rx + 'px'; ring.style.top = ry + 'px';
+    requestAnimationFrame(animateCursor);
+  })();
+  document.querySelectorAll('a,button,.benefit-item,.app-card,.team-card,.gallery-item').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      cursor.style.transform = 'translate(-50%,-50%) scale(2)';
+      cursor.style.background = 'var(--green)';
+      ring.style.width = '60px'; ring.style.height = '60px';
+    });
+    el.addEventListener('mouseleave', () => {
+      cursor.style.transform = 'translate(-50%,-50%) scale(1)';
+      cursor.style.background = 'var(--blue)';
+      ring.style.width = '36px'; ring.style.height = '36px';
+    });
+  });
+
+  /* ===== SCROLL REVEAL ===== */
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+  reveals.forEach(el => observer.observe(el));
+
+  /* ===== NAV SCROLL EFFECT ===== */
+  window.addEventListener('scroll', () => {
+    const nav = document.getElementById('navbar');
+    nav.style.background = window.scrollY > 60 ? 'rgba(5,5,8,0.97)' : 'rgba(5,5,8,0.85)';
+  });
+
+  /* ===== HAMBURGER ===== */
+  const ham = document.getElementById('hamburger');
+  const mobileNav = document.getElementById('mobileNav');
+  ham.addEventListener('click', () => mobileNav.classList.toggle('open'));
+  function closeMobile() { mobileNav.classList.remove('open'); }
+
+  /* ===== FORM SUBMIT ===== */
+  function submitForm() {
+    const email = document.getElementById('email').value;
+    const msg = document.getElementById('msg').value;
+    if (!email || !msg) { alert('Por favor completa el email y el mensaje.'); return; }
+    document.getElementById('contactForm').style.display = 'none';
+    document.getElementById('formSuccess').classList.add('active');
+  }
+
+  /* ===== COUNTER ANIMATION ===== */
+  function animateCounter(el, target, suffix) {
+    let current = 0;
+    const increment = target / 60;
+    const timer = setInterval(() => {
+      current += increment;
+      if (current >= target) { current = target; clearInterval(timer); }
+      el.textContent = Math.floor(current) + suffix;
+    }, 20);
+  }
+  const counterObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting && !e.target.dataset.counted) {
+        e.target.dataset.counted = true;
+        const val = e.target.dataset.value;
+        const suf = e.target.dataset.suffix || '';
+        animateCounter(e.target, parseInt(val), suf);
+      }
+    });
+  }, { threshold: 0.5 });
+
+  /* ===== SMOOTH ANCHOR ===== */
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  /* ===== TYPED EFFECT HERO ===== */
+  const words = ['Cultiva', 'Riega', 'Optimiza', 'Transforma'];
+  let wi = 0, ci = 0, deleting = false;
+  const typedEl = document.getElementById('typedText');
+  function type() {
+    const word = words[wi];
+    if (!deleting) {
+      typedEl.textContent = word.slice(0, ++ci);
+      if (ci === word.length) { deleting = true; setTimeout(type, 1800); return; }
+    } else {
+      typedEl.textContent = word.slice(0, --ci);
+      if (ci === 0) { deleting = false; wi = (wi + 1) % words.length; }
+    }
+    setTimeout(type, deleting ? 60 : 100);
+  }
+  setTimeout(type, 1500);
+
+  /* ===== PARALLAX ORBS ===== */
+  document.addEventListener('mousemove', e => {
+    const x = (e.clientX / window.innerWidth - 0.5) * 20;
+    const y = (e.clientY / window.innerHeight - 0.5) * 20;
+    document.querySelectorAll('.hero-orb').forEach((orb, i) => {
+      const factor = i === 0 ? 1 : -0.6;
+      orb.style.transform = `translate(${x * factor}px, ${y * factor}px)`;
+    });
+  });
+</script>
+
+</body>
+</html>
